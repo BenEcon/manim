@@ -84,7 +84,7 @@ class FunctionGraph(ParametricCurve):
         super().__init__(parametric_function, self.x_range, **kwargs)
 
 
-class ImplicitFunction(VMobject):
+class ImplicitFunction(VMobject): 
     def __init__(
         self,
         func: Callable[[float, float], float],

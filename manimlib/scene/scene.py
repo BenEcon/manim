@@ -220,14 +220,14 @@ class Scene(object):
         self.save_state()
         self.show_animation_progress = show_animation_progress
 
-        # Create embedded IPython terminal to be configured
-        shell = InteractiveShellEmbed.instance()
-
-        # Use the locals namespace of the caller
+        # Create embedded IPython terminal configured to have access to
+        # the local namespace of the caller
         caller_frame = inspect.currentframe().f_back
-        local_ns = dict(caller_frame.f_locals)
+        module = get_module(caller_frame.f_globals["__file__"])
+        shell = InteractiveShellEmbed(user_module=module)
 
-        # Add a few custom shortcuts
+        # Add a few custom shortcuts to that local namespace
+        local_ns = dict(caller_frame.f_locals)
         local_ns.update(
             play=self.play,
             wait=self.wait,
@@ -244,6 +244,9 @@ class Scene(object):
             notouch=lambda: shell.enable_gui(None),
         )
 
+        # Update the shell module with the caller's locals + shortcuts
+        module.__dict__.update(local_ns)
+
         # Enables gui interactions during the embed
         def inputhook(context):
             while not context.input_is_ready():
@@ -254,17 +257,6 @@ class Scene(object):
 
         pt_inputhooks.register("manim", inputhook)
         shell.enable_gui("manim")
-
-        # This is hacky, but there's an issue with ipython which is that
-        # when you define lambda's or list comprehensions during a shell session,
-        # they are not aware of local variables in the surrounding scope. Because
-        # That comes up a fair bit during scene construction, to get around this,
-        # we (admittedly sketchily) update the global namespace to match the local
-        # namespace, since this is just a shell session anyway.
-        shell.events.register(
-            "pre_run_cell",
-            lambda *args, **kwargs: shell.user_global_ns.update(shell.user_ns)
-        )
 
         # Operation to run after each ipython command
         def post_cell_func(*args, **kwargs):
@@ -289,13 +281,7 @@ class Scene(object):
         shell.magic(f"xmode {self.embed_exception_mode}")
 
         # Launch shell
-        shell(
-            local_ns=local_ns,
-            # Pretend like we're embeding in the caller function, not here
-            stack_depth=2,
-            # Specify that the present module is the caller's, not here
-            module=get_module(caller_frame.f_globals["__file__"])
-        )
+        shell()
 
         # End scene when exiting an embed
         if close_scene_on_exit:
@@ -388,7 +374,7 @@ class Scene(object):
         """
         batches = batch_by_property(
             self.mobjects,
-            lambda m: str(type(m)) + str(m.get_shader_wrapper(self.camera.ctx).get_id())
+            lambda m: str(type(m)) + str(m.get_shader_wrapper(self.camera.ctx).get_id()) + str(m.z_index)
         )
 
         for group in self.render_groups:
@@ -552,7 +538,7 @@ class Scene(object):
         if self.skip_animations and not override_skip_animations:
             return [run_time]
 
-        times = np.arange(0, run_time, 1 / self.camera.fps)
+        times = np.arange(0, run_time, 1 / self.camera.fps) + 1 / self.camera.fps
 
         self.file_writer.set_progress_display_description(sub_desc=desc)
 
